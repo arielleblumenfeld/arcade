@@ -116,7 +116,10 @@
     .neon-title .star {
       margin: 0 0.35em;
       font-size: 0.6em;
-      vertical-align: middle;
+      /* Raise the star so its center lines up with the middle of the capital
+         letters. ("middle" would center on lowercase height, which sits too low.)
+         Measured in Futura: cap center is 0.28em of the star above the baseline. */
+      vertical-align: 0.28em;
       color: var(--yellow);
       text-shadow: 0 0 6px var(--yellow), 0 0 16px var(--yellow);
     }
