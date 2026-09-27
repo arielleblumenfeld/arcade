@@ -1,0 +1,16 @@
+# macOS folder metadata (Finder creates these automatically)
+.DS_Store
+
+# Secrets: API keys and passwords belong in env files, never in Git
+.env
+.env.*
+
+# Created by the Vercel CLI when linking this folder to a project
+.vercel/
+
+# Dependencies and logs, in case tools are added later
+node_modules/
+*.log
+
+# Claude Code's personal, per-machine settings
+.claude/settings.local.json

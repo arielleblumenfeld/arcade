@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blackjack · Strategy Coach</title>
+  <style>
+    /* ===================== Theme: Retro Vegas neon ===================== */
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --card-w: 80px;
+      --card-h: 116px;
+
+      /* Neon palette */
+      --night: #0b0120;
+      --pink: #ff2a9d;
+      --cyan: #22e4ff;
+      --yellow: #ffe45c;
+      --green: #4dff9a;
+      --red: #ff4d6d;
+      --purple: #b45cff;
+      --glass: rgba(24, 6, 56, 0.72);
+
+      /* Fonts that ship with macOS/Windows; no downloads needed */
+      --display: "Futura", "Avenir Next Condensed", "Avenir Next", "Trebuchet MS", sans-serif;
+      --script: "Snell Roundhand", "Brush Script MT", "Segoe Script", cursive;
+      --body: "Avenir Next", system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      font-family: var(--body);
+      color: #f3eaff;
+      /* A pink glow from the sky, a cyan glow from the floor */
+      background:
+        radial-gradient(ellipse at 50% -10%, rgba(255, 42, 157, 0.35), transparent 55%),
+        radial-gradient(ellipse at 50% 115%, rgba(34, 228, 255, 0.25), transparent 55%),
+        var(--night);
+      background-attachment: fixed;
+    }
+
+    /* Faint stars scattered over the night sky */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.55;
+      background-image:
+        radial-gradient(1px 1px at 12% 18%, #fff, transparent),
+        radial-gradient(1px 1px at 78% 12%, #fff, transparent),
+        radial-gradient(1.5px 1.5px at 35% 62%, #fff, transparent),
+        radial-gradient(1px 1px at 88% 48%, #fff, transparent),
+        radial-gradient(1px 1px at 55% 30%, #fff, transparent),
+        radial-gradient(1.5px 1.5px at 8% 82%, #fff, transparent),
+        radial-gradient(1px 1px at 66% 88%, #fff, transparent),
+        radial-gradient(1px 1px at 94% 76%, #fff, transparent);
+    }
+
+    .table {
+      position: relative;
+      width: 100%;
+      max-width: 780px;
+      padding: 24px 16px 40px;
+      text-align: center;
+    }
+
+    /* ===================== Marquee sign ===================== */
+    .marquee {
+      position: relative;
+      display: inline-block;
+      padding: 18px 44px 16px;
+      border-radius: 20px;
+      background: linear-gradient(#1c0640, #10032a);
+      box-shadow: 0 0 0 2px var(--pink), 0 0 24px rgba(255, 42, 157, 0.45);
+    }
+
+    /* The ring of light bulbs around the sign */
+    .marquee::before {
+      content: '';
+      position: absolute;
+      inset: 6px;
+      border-radius: 14px;
+      border: 5px dotted var(--yellow);
+      filter: drop-shadow(0 0 3px var(--yellow));
+      animation: bulbs 1.2s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+
+    @keyframes bulbs {
+      from { opacity: 1; }
+      to { opacity: 0.45; }
+    }
+
+    .neon-title {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 3rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #fff0fa;
+      text-shadow:
+        0 0 4px #fff,
+        0 0 10px var(--pink),
+        0 0 22px var(--pink),
+        0 0 44px var(--pink);
+      animation: flicker 7s infinite;
+    }
+
+    .neon-title .star {
+      margin: 0 0.35em;
+      font-size: 0.6em;
+      vertical-align: middle;
+      color: var(--yellow);
+      text-shadow: 0 0 6px var(--yellow), 0 0 16px var(--yellow);
+    }
+
+    /* A tube that sputters every few seconds, like a real sign */
+    @keyframes flicker {
+      0%, 17%, 21%, 24%, 55%, 59%, 100% {
+        opacity: 1;
+      }
+      19%, 23%, 57% {
+        opacity: 0.55;
+        text-shadow: 0 0 2px var(--pink);
+      }
+    }
+
+    .neon-script {
+      margin: 2px 0 0;
+      font-family: var(--script);
+      font-size: 1.6rem;
+      color: #e8fdff;
+      text-shadow: 0 0 4px var(--cyan), 0 0 12px var(--cyan), 0 0 24px var(--cyan);
+    }
+
+    /* ===================== Coach on/off switch ===================== */
+    .toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin: 18px 0 10px;
+    }
+
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-family: var(--display);
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .switch input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: relative;
+      width: 46px;
+      height: 26px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    .slider::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: white;
+      transition: transform 0.2s;
+    }
+
+    .switch input:checked + .slider {
+      background: var(--pink);
+      box-shadow: 0 0 12px var(--pink);
+    }
+
+    .switch input:checked + .slider::after {
+      transform: translateX(20px);
+    }
+
+    .switch input:focus-visible + .slider {
+      outline: 2px solid var(--yellow);
+      outline-offset: 3px;
+    }
+
+    /* ===================== Stats bar ===================== */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+
+    .stat {
+      padding: 8px 6px;
+      border-radius: 12px;
+      background: var(--glass);
+      border: 1px solid rgba(34, 228, 255, 0.35);
+      box-shadow: inset 0 0 14px rgba(34, 228, 255, 0.1);
+    }
+
+    .stat-label {
+      display: block;
+      font-family: var(--display);
+      font-size: 0.68rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      opacity: 0.85;
+    }
+
+    .stat-value {
+      display: block;
+      margin-top: 3px;
+      font-family: var(--display);
+      font-size: 1.2rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--yellow);
+      text-shadow: 0 0 8px rgba(255, 228, 92, 0.55);
+    }
+
+    /* ===================== The table (felt) ===================== */
+    .felt {
+      margin: 16px 0;
+      padding: 22px 12px 26px;
+      /* Wide rounded top, like the curved edge of a real table */
+      border-radius: 220px 220px 32px 32px / 110px 110px 32px 32px;
+      background: radial-gradient(ellipse at 50% 35%, #2c0b63 0%, #16043a 70%);
+      border: 2px solid var(--cyan);
+      box-shadow:
+        0 0 14px rgba(34, 228, 255, 0.55),
+        inset 0 0 36px rgba(34, 228, 255, 0.16),
+        0 24px 60px rgba(0, 0, 0, 0.6);
+    }
+
+    .felt-print {
+      margin: 6px 0 0;
+      font-family: var(--display);
+      font-size: 0.7rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      opacity: 0.45;
+    }
+
+    .hand-area {
+      margin: 10px 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-family: var(--display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #ffd6ee;
+    }
+
+    .total {
+      display: inline-block;
+      padding: 2px 10px;
+      margin-left: 8px;
+      border-radius: 999px;
+      border: 1px solid var(--pink);
+      background: rgba(255, 42, 157, 0.15);
+      color: #fff;
+      letter-spacing: 0.05em;
+      text-transform: none;
+      box-shadow: 0 0 8px rgba(255, 42, 157, 0.5);
+    }
+
+    .total:empty {
+      display: none;
+    }
+
+    /* ===================== Cards ===================== */
+    .cards {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      min-height: var(--card-h);
+    }
+
+    .card {
+      position: relative;
+      width: var(--card-w);
+      height: var(--card-h);
+      border-radius: 9px;
+      background: linear-gradient(160deg, #ffffff, #f4efe6);
+      color: #1b1030;
+      font-family: var(--display);
+      font-weight: 700;
+      box-shadow:
+        0 6px 14px rgba(0, 0, 0, 0.5),
+        0 0 14px rgba(34, 228, 255, 0.3);
+    }
+
+    .card.red {
+      color: #e0144f;
+    }
+
+    .card .corner {
+      position: absolute;
+      top: 6px;
+      left: 7px;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .card .corner.bottom {
+      top: auto;
+      left: auto;
+      bottom: 6px;
+      right: 7px;
+      transform: rotate(180deg);
+    }
+
+    .card .pip {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+    }
+
+    /* The dealer's face-down card: purple stripes with a glowing star */
+    .card.back {
+      background:
+        radial-gradient(circle at center, rgba(255, 42, 157, 0.55) 0 14px, transparent 26px),
+        repeating-linear-gradient(45deg, #2b0a5c 0 5px, #3e1086 5px 10px);
+      border: 3px solid #f4efe6;
+      box-shadow:
+        0 6px 14px rgba(0, 0, 0, 0.5),
+        0 0 16px rgba(255, 42, 157, 0.55);
+    }
+
+    .card.back::after {
+      content: '✦';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      color: var(--yellow);
+      text-shadow: 0 0 6px var(--yellow), 0 0 14px var(--pink);
+    }
+
+    /* New cards slide in; the hole card flips when revealed */
+    @keyframes deal {
+      from {
+        opacity: 0;
+        transform: translateY(-40px) rotate(-8deg);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes flip {
+      from {
+        transform: rotateY(90deg);
+      }
+      to {
+        transform: rotateY(0);
+      }
+    }
+
+    .card.dealt {
+      animation: deal 0.35s ease-out;
+    }
+
+    .card.flip-in {
+      animation: flip 0.3s ease-out;
+    }
+
+    /* ===================== Result sign ===================== */
+    .message {
+      min-height: 1.6em;
+      margin: 14px 0;
+      font-family: var(--display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #f3eaff;
+    }
+
+    /* Wins flash like a casino sign, three times */
+    .message.win,
+    .message.blackjack {
+      color: #fffbe0;
+      text-shadow: 0 0 4px #fff, 0 0 12px var(--yellow), 0 0 26px var(--yellow);
+      animation: sign-flash 0.5s steps(1) 3;
+    }
+
+    .message.blackjack {
+      font-size: 1.5rem;
+      text-shadow:
+        0 0 4px #fff,
+        0 0 12px var(--yellow),
+        0 0 26px var(--pink),
+        0 0 44px var(--pink);
+    }
+
+    @keyframes sign-flash {
+      50% {
+        opacity: 0.25;
+        text-shadow: none;
+      }
+    }
+
+    .message.lose {
+      color: #ffc2cf;
+      text-shadow: 0 0 10px rgba(255, 77, 109, 0.8);
+    }
+
+    .message.push {
+      color: #d9fbff;
+      text-shadow: 0 0 10px rgba(34, 228, 255, 0.8);
+    }
+
+    /* ===================== Coach panel ===================== */
+    .coach {
+      max-width: 540px;
+      margin: 0 auto 14px;
+      padding: 10px 14px 12px;
+      border-radius: 12px;
+      background: var(--glass);
+      border: 1px solid rgba(180, 92, 255, 0.55);
+      box-shadow: 0 0 16px rgba(180, 92, 255, 0.25);
+      text-align: left;
+    }
+
+    .coach-title {
+      margin: 0 0 4px;
+      font-family: var(--display);
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--purple);
+      text-shadow: 0 0 8px var(--purple);
+    }
+
+    .coach ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .coach li {
+      margin-top: 6px;
+      padding: 3px 0 3px 12px;
+      border-left: 3px solid;
+      line-height: 1.4;
+    }
+
+    .coach li.right {
+      border-color: var(--green);
+      box-shadow: -4px 0 10px -4px var(--green);
+    }
+
+    .coach li.wrong {
+      border-color: var(--pink);
+      box-shadow: -4px 0 10px -4px var(--pink);
+    }
+
+    /* ===================== Chips ===================== */
+    .chips {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 14px 0;
+    }
+
+    /* Each chip has a glowing rim in its own color (--c) */
+    .chip {
+      --c: var(--red);
+      width: 62px;
+      height: 62px;
+      padding: 0;
+      border-radius: 50%;
+      border: 3px solid var(--c);
+      background:
+        radial-gradient(circle, #1a0838 0 54%, transparent 55%),
+        repeating-conic-gradient(var(--c) 0 15deg, #1a0838 15deg 30deg);
+      color: #fff;
+      font-family: var(--display);
+      font-size: 1rem;
+      letter-spacing: 0;
+      text-shadow: 0 0 6px var(--c);
+      box-shadow: 0 0 10px var(--c), inset 0 0 6px var(--c);
+    }
+
+    .chip[data-value="5"] { --c: var(--red); }
+    .chip[data-value="25"] { --c: var(--green); }
+    .chip[data-value="100"] { --c: var(--cyan); }
+    .chip[data-value="500"] { --c: var(--purple); }
+
+    .chip:hover:not(:disabled) {
+      box-shadow: 0 0 20px var(--c), inset 0 0 8px var(--c);
+    }
+
+    /* ===================== Buttons ===================== */
+    .controls {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    /* Outlined neon tubes; each button sets its own color (--btn) */
+    button {
+      --btn: var(--cyan);
+      padding: 12px 22px;
+      font-family: var(--display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border: 2px solid var(--btn);
+      border-radius: 10px;
+      cursor: pointer;
+      background: rgba(11, 1, 32, 0.6);
+      color: #fff;
+      text-shadow: 0 0 6px var(--btn);
+      box-shadow: 0 0 10px color-mix(in srgb, var(--btn) 55%, transparent),
+        inset 0 0 8px color-mix(in srgb, var(--btn) 30%, transparent);
+      transition: transform 0.1s, box-shadow 0.2s, background 0.2s, opacity 0.2s;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      background: color-mix(in srgb, var(--btn) 16%, rgba(11, 1, 32, 0.6));
+      box-shadow: 0 0 22px var(--btn), inset 0 0 10px color-mix(in srgb, var(--btn) 40%, transparent);
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--yellow);
+      outline-offset: 3px;
+    }
+
+    button:disabled {
+      opacity: 0.28;
+      cursor: not-allowed;
+      box-shadow: none;
+      text-shadow: none;
+    }
+
+    #deal-btn,
+    #new-hand-btn { --btn: var(--pink); }
+    #hit-btn { --btn: var(--cyan); }
+    #stand-btn { --btn: var(--yellow); }
+    #double-btn { --btn: var(--purple); }
+
+    /* The one button to press next gets filled with light */
+    #deal-btn:not(:disabled),
+    #new-hand-btn:not(:disabled) {
+      background: var(--pink);
+      color: var(--night);
+      text-shadow: none;
+    }
+
+    button.secondary {
+      --btn: rgba(255, 255, 255, 0.6);
+      padding: 8px 16px;
+      font-size: 0.78rem;
+    }
+
+    /* Draws attention to Reset Bankroll when the player is broke */
+    button.attention {
+      --btn: var(--yellow);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      50% {
+        box-shadow: 0 0 26px var(--yellow);
+      }
+    }
+
+    /* ===================== Small screens ===================== */
+    @media (max-width: 560px) {
+      :root {
+        --card-w: 60px;
+        --card-h: 88px;
+      }
+
+      .marquee {
+        padding: 14px 22px 12px;
+      }
+
+      .neon-title {
+        font-size: 1.9rem;
+        letter-spacing: 0.12em;
+      }
+
+      .neon-script {
+        font-size: 1.3rem;
+      }
+
+      .toolbar {
+        justify-content: center;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      /* Five boxes in two columns: let the last one fill its row */
+      .stat:last-child {
+        grid-column: span 2;
+      }
+
+      .felt {
+        border-radius: 90px 90px 24px 24px / 50px 50px 24px 24px;
+      }
+
+      .card .pip {
+        font-size: 1.8rem;
+      }
+
+      .card .corner {
+        font-size: 0.85rem;
+      }
+
+      .chip {
+        width: 54px;
+        height: 54px;
+      }
+
+      button {
+        padding: 12px 14px;
+        letter-spacing: 0.08em;
+      }
+    }
+
+    /* Respect people who turn off motion in their system settings */
+    @media (prefers-reduced-motion: reduce) {
+      .marquee::before,
+      .neon-title,
+      .card.dealt,
+      .card.flip-in,
+      .message.win,
+      .message.blackjack,
+      button.attention {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="table">
+    <header class="marquee">
+      <h1 class="neon-title">
+        <span class="star" aria-hidden="true">✦</span>Blackjack<span class="star" aria-hidden="true">✦</span>
+      </h1>
+      <p class="neon-script">pays 3 to 2</p>
+    </header>
+
+    <div class="toolbar">
+      <label class="switch">
+        <input type="checkbox" id="coach-toggle" checked>
+        <span class="slider"></span>
+        Strategy coach
+      </label>
+    </div>
+
+    <section class="stats">
+      <div class="stat">
+        <span class="stat-label">Bankroll</span>
+        <span id="bankroll" class="stat-value"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Best bankroll</span>
+        <span id="high-score" class="stat-value"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Bet</span>
+        <span id="bet" class="stat-value"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">W-L-P</span>
+        <span id="record" class="stat-value"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Strategy accuracy</span>
+        <span id="accuracy" class="stat-value"></span>
+      </div>
+    </section>
+
+    <section class="felt">
+      <div class="hand-area">
+        <h2>Dealer <span id="dealer-total" class="total"></span></h2>
+        <div id="dealer-cards" class="cards"></div>
+      </div>
+
+      <p class="felt-print">Dealer stands on 17</p>
+      <p id="message" class="message" aria-live="polite"></p>
+
+      <div class="hand-area">
+        <h2>You <span id="player-total" class="total"></span></h2>
+        <div id="player-cards" class="cards"></div>
+      </div>
+    </section>
+
+    <div id="coach" class="coach" aria-live="polite" hidden>
+      <p class="coach-title">Coach</p>
+      <ul id="coach-list"></ul>
+    </div>
+
+    <div class="chips">
+      <button class="chip" data-value="5" aria-label="Add 5 to bet">5</button>
+      <button class="chip" data-value="25" aria-label="Add 25 to bet">25</button>
+      <button class="chip" data-value="100" aria-label="Add 100 to bet">100</button>
+      <button class="chip" data-value="500" aria-label="Add 500 to bet">500</button>
+      <button id="clear-btn" class="secondary">Clear Bet</button>
+    </div>
+
+    <div class="controls">
+      <button id="deal-btn">Deal</button>
+      <button id="hit-btn">Hit</button>
+      <button id="stand-btn">Stand</button>
+      <button id="double-btn">Double Down</button>
+      <button id="new-hand-btn">New Hand</button>
+    </div>
+
+    <div class="controls">
+      <button id="reset-btn" class="secondary">Reset Bankroll</button>
+    </div>
+  </main>
+
+  <script>
+    // ===================== Settings =====================
+    const SUITS = ['♠', '♥', '♦', '♣'];
+    const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+    const NUM_DECKS = 6;          // Casinos usually deal from a "shoe" of several decks
+    const STARTING_BANKROLL = 1000;
+    const MIN_BET = 5;            // The smallest chip
+    const DEAL_DELAY = 350;       // Milliseconds between dealt cards
+    const HIGH_SCORE_KEY = 'blackjack.bestBankroll'; // Name of the saved high score
+
+    const ACTION_LABELS = { hit: 'Hit', stand: 'Stand', double: 'Double Down' };
+
+    // ===================== High score (browser storage) =====================
+    // localStorage keeps small pieces of text in this browser, even after
+    // a refresh. Some browsers block it (for example, in private windows),
+    // so both functions carry on quietly if it isn't available.
+
+    // READ: runs once when the page loads.
+    function loadHighScore() {
+      try {
+        const saved = Number(localStorage.getItem(HIGH_SCORE_KEY));
+        return saved > STARTING_BANKROLL ? saved : STARTING_BANKROLL;
+      } catch {
+        return STARTING_BANKROLL;
+      }
+    }
+
+    // WRITE: runs after every hand. Only a new record gets saved,
+    // so a lower bankroll never replaces your best.
+    function saveHighScore() {
+      if (state.bankroll <= state.highScore) return false;
+      state.highScore = state.bankroll;
+      try {
+        localStorage.setItem(HIGH_SCORE_KEY, String(state.highScore));
+      } catch {
+        // Storage unavailable: the record still shows until you refresh.
+      }
+      return true;
+    }
+
+    // ===================== Game state =====================
+    // Everything the game needs to remember lives in this one object.
+    const state = {
+      shoe: [],
+      player: [],
+      dealer: [],
+      bankroll: STARTING_BANKROLL,
+      highScore: loadHighScore(), // Best bankroll ever, read from storage
+      bet: 0,
+      lastBet: 0,
+      // 'betting' → 'dealing' → 'player' → 'dealer' → 'done'
+      phase: 'betting',
+      holeHidden: true,       // Is the dealer's second card face down?
+      record: { wins: 0, losses: 0, pushes: 0 },
+      coach: { correct: 0, total: 0 },
+      feedback: [],           // Coach notes for the current hand
+    };
+
+    // ===================== Page elements =====================
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      bankroll: $('bankroll'),
+      highScore: $('high-score'),
+      bet: $('bet'),
+      record: $('record'),
+      accuracy: $('accuracy'),
+      dealerCards: $('dealer-cards'),
+      playerCards: $('player-cards'),
+      dealerTotal: $('dealer-total'),
+      playerTotal: $('player-total'),
+      message: $('message'),
+      coach: $('coach'),
+      coachList: $('coach-list'),
+      coachToggle: $('coach-toggle'),
+      chips: document.querySelectorAll('.chip'),
+      clearBtn: $('clear-btn'),
+      dealBtn: $('deal-btn'),
+      hitBtn: $('hit-btn'),
+      standBtn: $('stand-btn'),
+      doubleBtn: $('double-btn'),
+      newHandBtn: $('new-hand-btn'),
+      resetBtn: $('reset-btn'),
+    };
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const fmt = (n) => n.toLocaleString('en-US');
+
+    // ===================== Cards & hands =====================
+
+    // Build a fresh shoe and shuffle it with the Fisher-Yates algorithm,
+    // which gives every possible ordering an equal chance.
+    function buildShoe() {
+      const cards = [];
+      for (let d = 0; d < NUM_DECKS; d++) {
+        for (const suit of SUITS) {
+          for (const rank of RANKS) {
+            cards.push({ rank, suit });
+          }
+        }
+      }
+      for (let i = cards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+      }
+      return cards;
+    }
+
+    function drawCard() {
+      // Reshuffle when the shoe runs low
+      if (state.shoe.length < 20) {
+        state.shoe = buildShoe();
+      }
+      return state.shoe.pop();
+    }
+
+    // Work out a hand's best total. Aces start as 11 and drop to 1
+    // one at a time if the hand would otherwise bust.
+    // "soft" means an ace is still being counted as 11.
+    function handValue(hand) {
+      let total = 0;
+      let aces = 0;
+      for (const card of hand) {
+        if (card.rank === 'A') {
+          total += 11;
+          aces++;
+        } else if (['J', 'Q', 'K'].includes(card.rank)) {
+          total += 10;
+        } else {
+          total += Number(card.rank);
+        }
+      }
+      while (total > 21 && aces > 0) {
+        total -= 10;
+        aces--;
+      }
+      return { total, soft: aces > 0 };
+    }
+
+    function isBlackjack(hand) {
+      return hand.length === 2 && handValue(hand).total === 21;
+    }
+
+    // You can double only on your first two cards, and only if you can
+    // afford to match your bet.
+    function canDouble() {
+      return state.phase === 'player' &&
+        state.player.length === 2 &&
+        state.bankroll >= state.bet;
+    }
+
+    // ===================== Strategy coach =====================
+
+    // Basic strategy for these rules: 6 decks, dealer stands on all 17s,
+    // double on any first two cards, no splitting or surrender.
+    // Returns 'hit', 'stand', or 'double'.
+    function basicStrategy(hand, dealerUpCard, doubleAllowed) {
+      const { total, soft } = handValue(hand);
+      const up = handValue([dealerUpCard]).total; // 2–11, where ace = 11
+      const doubleOrHit = doubleAllowed ? 'double' : 'hit';
+
+      if (soft) {
+        if (total >= 19) return 'stand';
+        if (total === 18) {
+          if (up >= 3 && up <= 6) return doubleAllowed ? 'double' : 'stand';
+          if (up <= 8) return 'stand'; // dealer 2, 7, or 8
+          return 'hit';                // dealer 9, 10, or ace
+        }
+        if (total === 17) return up >= 3 && up <= 6 ? doubleOrHit : 'hit';
+        if (total >= 15) return up >= 4 && up <= 6 ? doubleOrHit : 'hit';
+        if (total >= 13) return up === 5 || up === 6 ? doubleOrHit : 'hit';
+        return 'hit'; // soft 12 (two aces)
+      }
+
+      if (total >= 17) return 'stand';
+      if (total >= 13) return up <= 6 ? 'stand' : 'hit';
+      if (total === 12) return up >= 4 && up <= 6 ? 'stand' : 'hit';
+      if (total === 11) return up <= 10 ? doubleOrHit : 'hit';
+      if (total === 10) return up <= 9 ? doubleOrHit : 'hit';
+      if (total === 9) return up >= 3 && up <= 6 ? doubleOrHit : 'hit';
+      return 'hit'; // 8 or less
+    }
+
+    // Grade the player's choice. Call this BEFORE the move changes the hand.
+    // Accuracy is tracked even when the coach is switched off.
+    function coachCheck(action) {
+      const best = basicStrategy(state.player, state.dealer[0], canDouble());
+      const correct = action === best;
+      state.coach.total++;
+      if (correct) state.coach.correct++;
+
+      const { total, soft } = handValue(state.player);
+      const situation = `${soft ? 'soft' : 'hard'} ${total} vs dealer ${state.dealer[0].rank}`;
+      const text = correct
+        ? `✓ ${ACTION_LABELS[action]} is the basic strategy play with ${situation}.`
+        : `✗ You chose ${ACTION_LABELS[action]}. Basic strategy says ${ACTION_LABELS[best]} with ${situation}.`;
+      state.feedback.push({ correct, text });
+    }
+
+    // ===================== Drawing the table =====================
+
+    // Update a card's look. Face-down cards contain no rank or suit,
+    // so the hidden card can't be peeked at in the page.
+    function paintCard(el, card, faceDown) {
+      const wasFaceDown = el.classList.contains('back');
+      el.classList.toggle('back', faceDown);
+      if (faceDown) {
+        el.innerHTML = '';
+        el.setAttribute('aria-label', 'Face-down card');
+        return;
+      }
+      el.classList.toggle('red', card.suit === '♥' || card.suit === '♦');
+      const label = card.rank + card.suit;
+      el.innerHTML =
+        `<span class="corner">${label}</span>` +
+        `<span class="pip">${card.suit}</span>` +
+        `<span class="corner bottom">${label}</span>`;
+      el.setAttribute('aria-label', label);
+      if (wasFaceDown) {
+        el.classList.add('flip-in');
+      }
+    }
+
+    // Only create elements for new cards, so each card animates in once.
+    function syncCards(container, hand, hideSecondCard) {
+      if (container.children.length > hand.length) {
+        container.innerHTML = '';
+      }
+      hand.forEach((card, i) => {
+        let el = container.children[i];
+        if (!el) {
+          el = document.createElement('div');
+          el.className = 'card dealt';
+          container.appendChild(el);
+        }
+        paintCard(el, card, hideSecondCard && i === 1);
+      });
+    }
+
+    function totalLabel(hand) {
+      if (hand.length === 0) return '';
+      const { total, soft } = handValue(hand);
+      return soft && total < 21 ? `soft ${total}` : String(total);
+    }
+
+    function render() {
+      const { phase, bankroll, bet, record, coach } = state;
+
+      // Stats bar
+      els.bankroll.textContent = fmt(bankroll);
+      els.highScore.textContent = fmt(state.highScore);
+      els.bet.textContent = fmt(bet);
+      els.record.textContent = `${record.wins}-${record.losses}-${record.pushes}`;
+      els.accuracy.textContent = coach.total === 0
+        ? '—'
+        : `${Math.round((coach.correct / coach.total) * 100)}% (${coach.correct}/${coach.total})`;
+
+      // Cards and totals. While the hole card is hidden, the dealer's
+      // total only counts the face-up card.
+      syncCards(els.dealerCards, state.dealer, state.holeHidden);
+      syncCards(els.playerCards, state.player, false);
+      const visibleDealer = state.holeHidden ? state.dealer.slice(0, 1) : state.dealer;
+      els.dealerTotal.textContent = totalLabel(visibleDealer);
+      els.playerTotal.textContent = totalLabel(state.player);
+
+      // Coach panel
+      const showCoach = els.coachToggle.checked && state.feedback.length > 0;
+      els.coach.hidden = !showCoach;
+      els.coachList.innerHTML = '';
+      for (const note of state.feedback) {
+        const li = document.createElement('li');
+        li.className = note.correct ? 'right' : 'wrong';
+        li.textContent = note.text;
+        els.coachList.appendChild(li);
+      }
+
+      // Buttons: only enable what makes sense right now
+      const betting = phase === 'betting';
+      const playing = phase === 'player';
+      els.chips.forEach((chip) => {
+        chip.disabled = !betting || bet + Number(chip.dataset.value) > bankroll;
+      });
+      els.clearBtn.disabled = !betting || bet === 0;
+      els.dealBtn.disabled = !betting || bet === 0;
+      els.hitBtn.disabled = !playing;
+      els.standBtn.disabled = !playing;
+      els.doubleBtn.disabled = !canDouble();
+      els.newHandBtn.disabled = phase !== 'done';
+      els.resetBtn.disabled = !(betting || phase === 'done');
+      els.resetBtn.classList.toggle('attention', isBroke());
+    }
+
+    // tone is 'win', 'blackjack', 'lose', 'push', or '' and picks the neon style.
+    function setMessage(text, tone = '') {
+      els.message.textContent = text;
+      // Remove the tone, force a redraw, then add it back, so the
+      // flashing sign animation replays on every hand.
+      els.message.className = 'message';
+      void els.message.offsetWidth;
+      if (tone) els.message.classList.add(tone);
+    }
+
+    function isBroke() {
+      return state.bankroll < MIN_BET && (state.phase === 'betting' || state.phase === 'done');
+    }
+
+    // ===================== Game flow =====================
+
+    function addChip(value) {
+      if (state.phase !== 'betting') return;
+      if (state.bet + value > state.bankroll) return;
+      state.bet += value;
+      setMessage('Press Deal when you’re ready.');
+      render();
+    }
+
+    function clearBet() {
+      if (state.phase !== 'betting') return;
+      state.bet = 0;
+      setMessage('Place your bet with the chips.');
+      render();
+    }
+
+    async function deal() {
+      if (state.phase !== 'betting' || state.bet === 0 || state.bet > state.bankroll) return;
+
+      // The bet leaves your bankroll and sits on the table
+      state.bankroll -= state.bet;
+      state.lastBet = state.bet;
+      state.player = [];
+      state.dealer = [];
+      state.feedback = [];
+      state.holeHidden = true;
+      state.phase = 'dealing';
+      setMessage('Dealing…');
+      render();
+
+      // Deal in casino order: player, dealer, player, dealer
+      for (const hand of [state.player, state.dealer, state.player, state.dealer]) {
+        hand.push(drawCard());
+        render();
+        await sleep(DEAL_DELAY);
+      }
+
+      // If anyone has blackjack, the hand ends right away
+      if (isBlackjack(state.player) || isBlackjack(state.dealer)) {
+        finishHand();
+        return;
+      }
+
+      state.phase = 'player';
+      setMessage('Hit, Stand, or Double Down?');
+      render();
+    }
+
+    function hit() {
+      if (state.phase !== 'player') return;
+      coachCheck('hit');
+      state.player.push(drawCard());
+      const { total } = handValue(state.player);
+      if (total > 21) {
+        finishHand();
+      } else if (total === 21) {
+        dealerTurn(); // Nothing better to do at 21
+      } else {
+        render();
+      }
+    }
+
+    function stand() {
+      if (state.phase !== 'player') return;
+      coachCheck('stand');
+      dealerTurn();
+    }
+
+    function doubleDown() {
+      if (!canDouble()) return;
+      coachCheck('double');
+      // Match the original bet, take exactly one card, then stop
+      state.bankroll -= state.bet;
+      state.bet *= 2;
+      state.player.push(drawCard());
+      if (handValue(state.player).total > 21) {
+        finishHand();
+      } else {
+        dealerTurn();
+      }
+    }
+
+    async function dealerTurn() {
+      state.phase = 'dealer';
+      setMessage('Dealer’s turn…');
+      render();
+      await sleep(DEAL_DELAY);
+
+      state.holeHidden = false;
+      render();
+
+      // House rule: the dealer draws until reaching 17 or more
+      while (handValue(state.dealer).total < 17) {
+        await sleep(DEAL_DELAY * 1.5);
+        state.dealer.push(drawCard());
+        render();
+      }
+      await sleep(DEAL_DELAY);
+      finishHand();
+    }
+
+    // Decide the result and pay out. A payout includes your original bet:
+    // a win returns 2× the bet, blackjack returns 2.5× (it pays 3 to 2),
+    // a push returns just the bet, and a loss returns nothing.
+    function finishHand() {
+      state.holeHidden = false;
+      const player = handValue(state.player).total;
+      const dealer = handValue(state.dealer).total;
+      const playerBJ = isBlackjack(state.player);
+      const dealerBJ = isBlackjack(state.dealer);
+      const bet = state.bet;
+
+      let outcome;
+      let text;
+      if (player > 21) {
+        outcome = 'lose';
+        text = `Bust! You lose ${fmt(bet)}.`;
+      } else if (playerBJ && dealerBJ) {
+        outcome = 'push';
+        text = 'You both have blackjack. Push.';
+      } else if (playerBJ) {
+        outcome = 'blackjack';
+        text = `Blackjack! You win ${fmt(bet * 1.5)}.`;
+      } else if (dealerBJ) {
+        outcome = 'lose';
+        text = `Dealer has blackjack. You lose ${fmt(bet)}.`;
+      } else if (dealer > 21) {
+        outcome = 'win';
+        text = `Dealer busts. You win ${fmt(bet)}!`;
+      } else if (player > dealer) {
+        outcome = 'win';
+        text = `${player} beats ${dealer}. You win ${fmt(bet)}!`;
+      } else if (player < dealer) {
+        outcome = 'lose';
+        text = `${dealer} beats ${player}. You lose ${fmt(bet)}.`;
+      } else {
+        outcome = 'push';
+        text = `Both ${player}. Push. Your bet is returned.`;
+      }
+
+      const payouts = { blackjack: bet * 2.5, win: bet * 2, push: bet, lose: 0 };
+      state.bankroll += payouts[outcome];
+
+      if (outcome === 'push') state.record.pushes++;
+      else if (outcome === 'lose') state.record.losses++;
+      else state.record.wins++;
+
+      state.phase = 'done';
+      if (saveHighScore()) {
+        text += ' New best bankroll!';
+      }
+      if (isBroke()) {
+        text += ' You’re out of chips. Press Reset Bankroll.';
+      }
+      setMessage(text, outcome);
+      render();
+    }
+
+    function newHand() {
+      if (state.phase !== 'done') return;
+      state.phase = 'betting';
+      state.player = [];
+      state.dealer = [];
+      state.feedback = [];
+      // Keep the same bet ready if you can still afford it
+      state.bet = state.lastBet <= state.bankroll ? state.lastBet : 0;
+      if (isBroke()) {
+        setMessage('You’re out of chips. Press Reset Bankroll.', 'lose');
+      } else if (state.bet > 0) {
+        setMessage('Same bet again? Adjust with the chips, then press Deal.');
+      } else {
+        setMessage('Place your bet with the chips.');
+      }
+      render();
+    }
+
+    // Start over with 1,000 chips. The W-L-P record and strategy accuracy
+    // are kept, since they measure the whole session.
+    function resetBankroll() {
+      if (state.phase !== 'betting' && state.phase !== 'done') return;
+      state.bankroll = STARTING_BANKROLL;
+      state.bet = 0;
+      state.lastBet = 0;
+      state.player = [];
+      state.dealer = [];
+      state.feedback = [];
+      state.phase = 'betting';
+      setMessage(`Bankroll reset to ${fmt(STARTING_BANKROLL)}. Place your bet.`);
+      render();
+    }
+
+    // ===================== Wire up the buttons =====================
+    els.chips.forEach((chip) => {
+      chip.addEventListener('click', () => addChip(Number(chip.dataset.value)));
+    });
+    els.clearBtn.addEventListener('click', clearBet);
+    els.dealBtn.addEventListener('click', deal);
+    els.hitBtn.addEventListener('click', hit);
+    els.standBtn.addEventListener('click', stand);
+    els.doubleBtn.addEventListener('click', doubleDown);
+    els.newHandBtn.addEventListener('click', newHand);
+    els.resetBtn.addEventListener('click', resetBankroll);
+    els.coachToggle.addEventListener('change', render);
+
+    setMessage('Place your bet with the chips.');
+    render();
+  </script>
+</body>
+</html>
