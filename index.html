@@ -924,6 +924,74 @@
       return 'hit'; // 8 or less
     }
 
+    // How often the dealer busts, by up card (2–11, where ace = 11), for
+    // 6 decks with the dealer standing on 17. Rounded percentages.
+    const DEALER_BUST_PCT = { 2: 35, 3: 38, 4: 40, 5: 43, 6: 42, 7: 26, 8: 24, 9: 23, 10: 21, 11: 17 };
+
+    // Chance that one more card busts a hard total. 10, J, Q, and K all
+    // count as 10, so 4 of the 13 ranks are worth 10.
+    function bustChanceIfHit(total) {
+      const need = 22 - total; // smallest card value that busts
+      let bustRanks = 0;
+      if (need <= 9) bustRanks = 14 - need; // cards from `need` up to 9, plus the four 10s
+      else if (need === 10) bustRanks = 4;  // only the 10-value cards
+      return Math.round((bustRanks / 13) * 100);
+    }
+
+    function bustCardsLabel(total) {
+      const need = 22 - total;
+      return need === 10 ? '10-value cards' : `${need} or higher`;
+    }
+
+    function upCardName(card) {
+      if (card.rank === 'A') return 'an ace';
+      if (card.rank === '8') return 'an 8';
+      return `a ${card.rank}`;
+    }
+
+    // One or two sentences explaining WHY the basic strategy play is best.
+    function strategyReason(hand, dealerUpCard, best) {
+      const { total, soft } = handValue(hand);
+      const up = handValue([dealerUpCard]).total;
+      const dealer = `a dealer showing ${upCardName(dealerUpCard)}`;
+      const dealerBust = DEALER_BUST_PCT[up];
+      const bust = bustChanceIfHit(total);
+
+      if (best === 'double') {
+        return soft
+          ? `One card can't bust a soft hand, and ${dealer} busts about ${dealerBust}% of the time, so raise your bet while you have the edge.`
+          : `One card can't bust ${total}, and a 10-value card (the most common) would give you ${total + 10}. Double your bet while you have the edge.`;
+      }
+
+      if (best === 'stand') {
+        if (soft) {
+          return total >= 19
+            ? `Soft ${total} is already a strong hand.`
+            : `Soft 18 is likely to win or push against ${dealer}.`;
+        }
+        if (total >= 17) {
+          return `Hitting ${total} busts about ${bust}% of the time. Stand and make the dealer beat you.`;
+        }
+        return `Hitting busts on ${bustCardsLabel(total)} (about ${bust}%). ` +
+          `${dealer[0].toUpperCase() + dealer.slice(1)} must keep drawing to 17 and busts about ${dealerBust}% of the time, so let the dealer take the risk.`;
+      }
+
+      // best === 'hit'
+      if (soft) {
+        return total === 18
+          ? `Soft 18 often loses to ${dealer}, and the ace means one card can't bust you.`
+          : `The ace can count as 1, so one card can't bust you, and soft ${total} is too weak to stand on.`;
+      }
+      if (total <= 11) {
+        return `You can't bust with ${total}, so another card can only help.`;
+      }
+      if (total === 12 && up <= 3) {
+        return `Only 10-value cards bust a 12 (about ${bust}%), and ${dealer} busts less often than a 4–6, so hitting is slightly better.`;
+      }
+      return `${dealer[0].toUpperCase() + dealer.slice(1)} busts only about ${dealerBust}% of the time and usually finishes with 17 or more, which beats ${total}. ` +
+        `Hitting risks a bust (about ${bust}%) but gives you a chance to improve.`;
+    }
+
     // Grade the player's choice. Call this BEFORE the move changes the hand.
     // Accuracy is tracked even when the coach is switched off.
     function coachCheck(action) {
@@ -933,10 +1001,12 @@
       if (correct) state.coach.correct++;
 
       const { total, soft } = handValue(state.player);
-      const situation = `${soft ? 'soft' : 'hard'} ${total} vs dealer ${state.dealer[0].rank}`;
+      // Only the up card counts: the coach judges what you could see.
+      const situation = `${soft ? 'soft' : 'hard'} ${total} vs the dealer's ${state.dealer[0].rank} up card`;
+      const reason = strategyReason(state.player, state.dealer[0], best);
       const text = correct
-        ? `✓ ${ACTION_LABELS[action]} is the basic strategy play with ${situation}.`
-        : `✗ You chose ${ACTION_LABELS[action]}. Basic strategy says ${ACTION_LABELS[best]} with ${situation}.`;
+        ? `✓ ${ACTION_LABELS[action]} is the basic strategy play with ${situation}. ${reason}`
+        : `✗ You chose ${ACTION_LABELS[action]}. Basic strategy says ${ACTION_LABELS[best]} with ${situation}. ${reason}`;
       state.feedback.push({ correct, text });
     }
 
