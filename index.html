@@ -137,6 +137,8 @@
     .toolbar {
       display: flex;
       justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 12px 24px;
       margin: 18px 0 10px;
     }
 
@@ -217,6 +219,29 @@
       text-transform: uppercase;
       color: var(--cyan);
       opacity: 0.85;
+    }
+
+    .stat-note {
+      display: block;
+      margin-top: 2px;
+      font-size: 0.68rem;
+      color: var(--cyan);
+      opacity: 0.8;
+    }
+
+    .stat-note:empty {
+      display: none;
+    }
+
+    /* Average result per 100 chips for each move, shown with "Show odds" */
+    .odds-line {
+      max-width: 560px;
+      margin: 10px auto 0;
+      font-family: var(--display);
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      color: var(--cyan);
+      text-shadow: 0 0 8px rgba(34, 228, 255, 0.5);
     }
 
     .stat-value {
@@ -672,9 +697,14 @@
 
     <div class="toolbar">
       <label class="switch">
-        <input type="checkbox" id="coach-toggle" checked>
+        <input type="checkbox" id="coach-toggle" checked autocomplete="off">
         <span class="slider"></span>
         Strategy coach
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="odds-toggle" autocomplete="off">
+        <span class="slider"></span>
+        Show odds
       </label>
     </div>
 
@@ -698,6 +728,7 @@
       <div class="stat">
         <span class="stat-label">Strategy accuracy</span>
         <span id="accuracy" class="stat-value"></span>
+        <span id="assisted" class="stat-note"></span>
       </div>
     </section>
 
@@ -736,6 +767,7 @@
       <button id="double-btn">Double Down</button>
       <button id="new-hand-btn">New Hand</button>
     </div>
+    <p id="odds-line" class="odds-line" hidden></p>
 
     <div class="controls">
       <button id="reset-btn" class="secondary">Reset Bankroll</button>
@@ -796,8 +828,9 @@
       phase: 'betting',
       holeHidden: true,       // Is the dealer's second card face down?
       record: { wins: 0, losses: 0, pushes: 0 },
-      coach: { correct: 0, total: 0 },
+      coach: { correct: 0, total: 0, assisted: 0 },
       feedback: [],           // Coach notes for the current hand
+      oddsSeen: false,        // Were the odds visible during this decision?
     };
 
     // ===================== Page elements =====================
@@ -816,6 +849,9 @@
       coach: $('coach'),
       coachList: $('coach-list'),
       coachToggle: $('coach-toggle'),
+      oddsToggle: $('odds-toggle'),
+      oddsLine: $('odds-line'),
+      assisted: $('assisted'),
       chips: document.querySelectorAll('.chip'),
       clearBtn: $('clear-btn'),
       dealBtn: $('deal-btn'),
@@ -924,90 +960,180 @@
       return 'hit'; // 8 or less
     }
 
-    // How often the dealer busts, by up card (2–11, where ace = 11), for
-    // 6 decks with the dealer standing on 17. Rounded percentages.
-    const DEALER_BUST_PCT = { 2: 35, 3: 38, 4: 40, 5: 43, 6: 42, 7: 26, 8: 24, 9: 23, 10: 21, 11: 17 };
+    // ===================== Exact odds =====================
+    // Works out the exact chance to win, push, or lose for each move by
+    // following every card that could come next. Every rank is treated as
+    // equally likely (10, J, Q, K together are 4 of 13), which is very close
+    // to a 6-deck shoe. The dealer stands on 17 and has already checked for
+    // blackjack, so a dealer blackjack is ruled out by the time you decide.
+    const CARD_ODDS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((v) => [v, 1 / 13]).concat([[10, 4 / 13]]);
 
-    // Chance that one more card busts a hard total. 10, J, Q, and K all
-    // count as 10, so 4 of the 13 ranks are worth 10.
-    function bustChanceIfHit(total) {
-      const need = 22 - total; // smallest card value that busts
-      let bustRanks = 0;
-      if (need <= 9) bustRanks = 14 - need; // cards from `need` up to 9, plus the four 10s
-      else if (need === 10) bustRanks = 4;  // only the 10-value cards
-      return Math.round((bustRanks / 13) * 100);
+    // Results are saved by key so each situation is only worked out once.
+    const oddsMemo = new Map();
+    function remember(key, compute) {
+      if (!oddsMemo.has(key)) oddsMemo.set(key, compute());
+      return oddsMemo.get(key);
     }
 
-    function bustCardsLabel(total) {
-      const need = 22 - total;
-      return need === 10 ? '10-value cards' : `${need} or higher`;
+    // Add one card (ace = 1) to a total, counting an ace as 11 when it fits.
+    function addCardValue(total, soft, value) {
+      total += value;
+      if (value === 1 && total + 10 <= 21) {
+        total += 10;
+        soft = true;
+      }
+      if (total > 21 && soft) {
+        total -= 10;
+        soft = false;
+      }
+      return [total, soft];
     }
 
-    function upCardName(card) {
-      if (card.rank === 'A') return 'an ace';
-      if (card.rank === '8') return 'an 8';
-      return `a ${card.rank}`;
+    // Chance of each final dealer total (22 means bust) from a running total.
+    function dealerFrom(total, soft) {
+      return remember(`dealer ${total} ${soft}`, () => {
+        if (total > 21) return { 22: 1 };
+        if (total >= 17) return { [total]: 1 };
+        const out = {};
+        for (const [value, p] of CARD_ODDS) {
+          const next = dealerFrom(...addCardValue(total, soft, value));
+          for (const k in next) out[k] = (out[k] || 0) + p * next[k];
+        }
+        return out;
+      });
     }
 
-    // One or two sentences explaining WHY the basic strategy play is best.
-    function strategyReason(hand, dealerUpCard, best) {
+    // Final dealer totals for an up card (2–11), given no dealer blackjack.
+    function dealerFinal(up) {
+      return remember(`final ${up}`, () => {
+        const [startTotal, startSoft] = up === 11 ? [11, true] : [up, false];
+        const out = {};
+        let possible = 0;
+        for (const [value, p] of CARD_ODDS) {
+          // The dealer already checked, so a hole card making blackjack can't be there
+          if ((up === 11 && value === 10) || (up === 10 && value === 1)) continue;
+          possible += p;
+          const next = dealerFrom(...addCardValue(startTotal, startSoft, value));
+          for (const k in next) out[k] = (out[k] || 0) + p * next[k];
+        }
+        for (const k in out) out[k] /= possible;
+        return out;
+      });
+    }
+
+    const NO_CHANCE = { win: 0, push: 0, lose: 1 };
+    const expected = (odds) => odds.win - odds.lose; // average result per chip bet
+
+    function combine(parts) {
+      const odds = { win: 0, push: 0, lose: 0 };
+      for (const [p, o] of parts) {
+        odds.win += p * o.win;
+        odds.push += p * o.push;
+        odds.lose += p * o.lose;
+      }
+      return odds;
+    }
+
+    function standOdds(total, up) {
+      const odds = { win: 0, push: 0, lose: 0 };
+      const dealer = dealerFinal(up);
+      for (const k in dealer) {
+        const d = Number(k);
+        if (d === 22 || d < total) odds.win += dealer[k];
+        else if (d === total) odds.push += dealer[k];
+        else odds.lose += dealer[k];
+      }
+      return odds;
+    }
+
+    // Odds from here if you keep making the better choice (hit or stand).
+    function bestOdds(total, soft, up) {
+      if (total > 21) return NO_CHANCE;
+      return remember(`best ${total} ${soft} ${up}`, () => {
+        const stand = standOdds(total, up);
+        if (total === 21) return stand;
+        const hit = hitOdds(total, soft, up);
+        return expected(hit) > expected(stand) ? hit : stand;
+      });
+    }
+
+    // Take a card now, then keep playing well.
+    function hitOdds(total, soft, up) {
+      return remember(`hit ${total} ${soft} ${up}`, () =>
+        combine(CARD_ODDS.map(([value, p]) => [p, bestOdds(...addCardValue(total, soft, value), up)])));
+    }
+
+    // Take exactly one card, then stand (the bet is doubled).
+    function doubleOdds(total, soft, up) {
+      return remember(`double ${total} ${soft} ${up}`, () =>
+        combine(CARD_ODDS.map(([value, p]) => {
+          const [next] = addCardValue(total, soft, value);
+          return [p, next > 21 ? NO_CHANCE : standOdds(next, up)];
+        })));
+    }
+
+    // Win/push/lose odds for each move you can make right now.
+    function handOdds(hand, dealerUpCard, doubleAllowed) {
       const { total, soft } = handValue(hand);
       const up = handValue([dealerUpCard]).total;
-      const dealer = `a dealer showing ${upCardName(dealerUpCard)}`;
-      const dealerBust = DEALER_BUST_PCT[up];
-      const bust = bustChanceIfHit(total);
+      const odds = { hit: hitOdds(total, soft, up), stand: standOdds(total, up) };
+      if (doubleAllowed) odds.double = doubleOdds(total, soft, up);
+      return odds;
+    }
 
-      if (best === 'double') {
-        return soft
-          ? `One card can't bust a soft hand, and ${dealer} busts about ${dealerBust}% of the time, so raise your bet while you have the edge.`
-          : `One card can't bust ${total}, and a 10-value card (the most common) would give you ${total + 10}. Double your bet while you have the edge.`;
-      }
+    // Average chips won or lost per 100 chips bet. Doubling risks twice as much.
+    const valueOf = (action, odds) => expected(odds) * (action === 'double' ? 2 : 1);
+    const per100 = (action, odds) => Math.round(valueOf(action, odds) * 100);
+    const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
+    const pct = (x) => `${Math.round(x * 100)}%`;
 
-      if (best === 'stand') {
-        if (soft) {
-          return total >= 19
-            ? `Soft ${total} is already a strong hand.`
-            : `Soft 18 is likely to win or push against ${dealer}.`;
-        }
-        if (total >= 17) {
-          return `Hitting ${total} busts about ${bust}% of the time. Stand and make the dealer beat you.`;
-        }
-        return `Hitting busts on ${bustCardsLabel(total)} (about ${bust}%). ` +
-          `${dealer[0].toUpperCase() + dealer.slice(1)} must keep drawing to 17 and busts about ${dealerBust}% of the time, so let the dealer take the risk.`;
-      }
+    // Explain a verdict with the real numbers for this exact hand.
+    function oddsReason(odds, best) {
+      const actions = Object.keys(odds);
+      const wins = actions.map((a) => `${ACTION_LABELS[a]} ${pct(odds[a].win)}`).join(', ');
+      const values = actions.map((a) => `${ACTION_LABELS[a]} ${signed(per100(a, odds[a]))}`).join(', ');
+      let text = `Chance to win: ${wins}. Average result per 100 chips bet: ${values}.`;
 
-      // best === 'hit'
-      if (soft) {
-        return total === 18
-          ? `Soft 18 often loses to ${dealer}, and the ace means one card can't bust you.`
-          : `The ace can count as 1, so one card can't bust you, and soft ${total} is too weak to stand on.`;
+      const exactBest = actions.reduce((a, b) => (valueOf(b, odds[b]) > valueOf(a, odds[a]) ? b : a));
+      if (exactBest !== best) {
+        // Only happens in a couple of borderline spots where the charts and
+        // this simplified deck disagree by under 1 chip per 100.
+        text += ` It's a near tie: these odds slightly favor ${ACTION_LABELS[exactBest]}, but standard 6-deck charts say ${ACTION_LABELS[best]}.`;
+      } else if (best === 'double' && odds.double.win < odds.hit.win) {
+        text += ' Doubling wins a bit less often than hitting, but it pays twice as much, so it earns the most on average.';
+      } else if (valueOf(best, odds[best]) < 0) {
+        text += ` Every choice loses on average here; ${ACTION_LABELS[best]} loses the least.`;
+      } else {
+        text += ` ${ACTION_LABELS[best]} earns the most on average.`;
       }
-      if (total <= 11) {
-        return `You can't bust with ${total}, so another card can only help.`;
-      }
-      if (total === 12 && up <= 3) {
-        return `Only 10-value cards bust a 12 (about ${bust}%), and ${dealer} busts less often than a 4–6, so hitting is slightly better.`;
-      }
-      return `${dealer[0].toUpperCase() + dealer.slice(1)} busts only about ${dealerBust}% of the time and usually finishes with 17 or more, which beats ${total}. ` +
-        `Hitting risks a bust (about ${bust}%) but gives you a chance to improve.`;
+      return text;
     }
 
     // Grade the player's choice. Call this BEFORE the move changes the hand.
-    // Accuracy is tracked even when the coach is switched off.
+    // Accuracy is tracked even when the coach is switched off, but moves made
+    // after seeing the odds are "assisted" and don't count toward it.
     function coachCheck(action) {
-      const best = basicStrategy(state.player, state.dealer[0], canDouble());
+      const doubleAllowed = canDouble();
+      const best = basicStrategy(state.player, state.dealer[0], doubleAllowed);
       const correct = action === best;
-      state.coach.total++;
-      if (correct) state.coach.correct++;
+      const assisted = state.oddsSeen;
+      if (assisted) {
+        state.coach.assisted++;
+      } else {
+        state.coach.total++;
+        if (correct) state.coach.correct++;
+      }
+      state.oddsSeen = false; // the next decision starts fresh
 
       const { total, soft } = handValue(state.player);
       // Only the up card counts: the coach judges what you could see.
       const situation = `${soft ? 'soft' : 'hard'} ${total} vs the dealer's ${state.dealer[0].rank} up card`;
-      const reason = strategyReason(state.player, state.dealer[0], best);
-      const text = correct
-        ? `✓ ${ACTION_LABELS[action]} is the basic strategy play with ${situation}. ${reason}`
-        : `✗ You chose ${ACTION_LABELS[action]}. Basic strategy says ${ACTION_LABELS[best]} with ${situation}. ${reason}`;
-      state.feedback.push({ correct, text });
+      const reason = oddsReason(handOdds(state.player, state.dealer[0], doubleAllowed), best);
+      const verdict = correct
+        ? `✓ ${ACTION_LABELS[action]} is the basic strategy play with ${situation}.`
+        : `✗ You chose ${ACTION_LABELS[action]}. Basic strategy says ${ACTION_LABELS[best]} with ${situation}.`;
+      const note = assisted ? ' (Assisted: the odds were showing, so this move isn’t scored.)' : '';
+      state.feedback.push({ correct, text: `${verdict} ${reason}${note}` });
     }
 
     // ===================== Drawing the table =====================
@@ -1067,6 +1193,7 @@
       els.accuracy.textContent = coach.total === 0
         ? '—'
         : `${Math.round((coach.correct / coach.total) * 100)}% (${coach.correct}/${coach.total})`;
+      els.assisted.textContent = coach.assisted > 0 ? `+ ${coach.assisted} assisted (not scored)` : '';
 
       // Cards and totals. While the hole card is hidden, the dealer's
       // total only counts the face-up card.
@@ -1101,6 +1228,24 @@
       els.newHandBtn.disabled = phase !== 'done';
       els.resetBtn.disabled = !(betting || phase === 'done');
       els.resetBtn.classList.toggle('attention', isBroke());
+
+      // Odds: only on your turn with the switch on. Seeing them marks
+      // this decision as assisted, even if you switch them off again.
+      const odds = playing && els.oddsToggle.checked
+        ? handOdds(state.player, state.dealer[0], canDouble())
+        : null;
+      if (odds) state.oddsSeen = true;
+      const actionButtons = [[els.hitBtn, 'hit'], [els.standBtn, 'stand'], [els.doubleBtn, 'double']];
+      for (const [btn, action] of actionButtons) {
+        btn.textContent = odds && odds[action]
+          ? `${ACTION_LABELS[action]} · ${pct(odds[action].win)}`
+          : ACTION_LABELS[action];
+      }
+      els.oddsLine.hidden = !odds;
+      if (odds) {
+        const values = Object.keys(odds).map((a) => `${ACTION_LABELS[a]} ${signed(per100(a, odds[a]))}`);
+        els.oddsLine.textContent = `Win chance is on each button. Average result per 100 chips bet: ${values.join(' · ')}`;
+      }
     }
 
     // tone is 'win', 'blackjack', 'lose', 'push', or '' and picks the neon style.
@@ -1143,6 +1288,7 @@
       state.player = [];
       state.dealer = [];
       state.feedback = [];
+      state.oddsSeen = false;
       state.holeHidden = true;
       state.phase = 'dealing';
       setMessage('Dealing…');
@@ -1321,6 +1467,7 @@
     els.newHandBtn.addEventListener('click', newHand);
     els.resetBtn.addEventListener('click', resetBankroll);
     els.coachToggle.addEventListener('change', render);
+    els.oddsToggle.addEventListener('change', render);
 
     setMessage('Place your bet with the chips.');
     render();
