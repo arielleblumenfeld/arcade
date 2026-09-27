@@ -26,7 +26,6 @@
 
       /* Fonts that ship with macOS/Windows; no downloads needed */
       --display: "Futura", "Avenir Next Condensed", "Avenir Next", "Trebuchet MS", sans-serif;
-      --script: "Snell Roundhand", "Brush Script MT", "Segoe Script", cursive;
       --body: "Avenir Next", system-ui, -apple-system, sans-serif;
     }
 
@@ -75,7 +74,7 @@
     .marquee {
       position: relative;
       display: inline-block;
-      padding: 18px 44px 16px;
+      padding: 20px 44px;
       border-radius: 20px;
       background: linear-gradient(#1c0640, #10032a);
       box-shadow: 0 0 0 2px var(--pink), 0 0 24px rgba(255, 42, 157, 0.45);
@@ -133,13 +132,6 @@
       }
     }
 
-    .neon-script {
-      margin: 2px 0 0;
-      font-family: var(--script);
-      font-size: 1.6rem;
-      color: #e8fdff;
-      text-shadow: 0 0 4px var(--cyan), 0 0 12px var(--cyan), 0 0 24px var(--cyan);
-    }
 
     /* ===================== Coach on/off switch ===================== */
     .toolbar {
@@ -612,16 +604,12 @@
       }
 
       .marquee {
-        padding: 14px 22px 12px;
+        padding: 16px 22px;
       }
 
       .neon-title {
         font-size: 1.9rem;
         letter-spacing: 0.12em;
-      }
-
-      .neon-script {
-        font-size: 1.3rem;
       }
 
       .toolbar {
@@ -680,7 +668,6 @@
       <h1 class="neon-title">
         <span class="star" aria-hidden="true">✦</span>Blackjack<span class="star" aria-hidden="true">✦</span>
       </h1>
-      <p class="neon-script">pays 3 to 2</p>
     </header>
 
     <div class="toolbar">
