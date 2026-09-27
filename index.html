@@ -472,6 +472,10 @@
     }
 
     .coach-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
       margin: 0 0 4px;
       font-family: var(--display);
       font-size: 0.72rem;
@@ -479,6 +483,16 @@
       text-transform: uppercase;
       color: var(--purple);
       text-shadow: 0 0 8px var(--purple);
+    }
+
+    /* Explains the two numbers once, instead of in every note */
+    .coach-legend {
+      font-family: var(--body);
+      font-size: 0.7rem;
+      letter-spacing: 0.02em;
+      text-transform: none;
+      color: rgba(243, 234, 255, 0.55);
+      text-shadow: none;
     }
 
     .coach ul {
@@ -502,6 +516,52 @@
     .coach li.wrong {
       border-color: var(--pink);
       box-shadow: -4px 0 10px -4px var(--pink);
+    }
+
+    .coach-verdict {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 2px 10px;
+    }
+
+    .coach-situation {
+      font-size: 0.85rem;
+      color: rgba(243, 234, 255, 0.6);
+    }
+
+    .coach-tag {
+      margin-left: auto;
+      padding: 1px 8px;
+      border: 1px solid rgba(34, 228, 255, 0.6);
+      border-radius: 999px;
+      font-family: var(--display);
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+
+    .coach-odds {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px 16px;
+      margin-top: 2px;
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+      color: rgba(243, 234, 255, 0.6);
+    }
+
+    /* The basic strategy play */
+    .coach-odds .best {
+      color: var(--yellow);
+      font-weight: 600;
+    }
+
+    .coach-extra {
+      margin-top: 2px;
+      font-size: 0.8rem;
+      color: rgba(243, 234, 255, 0.6);
     }
 
     /* ===================== Chips ===================== */
@@ -748,7 +808,7 @@
     </section>
 
     <div id="coach" class="coach" aria-live="polite" hidden>
-      <p class="coach-title">Coach</p>
+      <p class="coach-title">Coach <span class="coach-legend">win % · avg per 100 chips</span></p>
       <ul id="coach-list"></ul>
     </div>
 
@@ -1087,26 +1147,34 @@
     const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0');
     const pct = (x) => `${Math.round(x * 100)}%`;
 
-    // Explain a verdict with the real numbers for this exact hand.
-    function oddsReason(odds, best) {
-      const actions = Object.keys(odds);
-      const wins = actions.map((a) => `${ACTION_LABELS[a]} ${pct(odds[a].win)}`).join(', ');
-      const values = actions.map((a) => `${ACTION_LABELS[a]} ${signed(per100(a, odds[a]))}`).join(', ');
-      let text = `Chance to win: ${wins}. Average result per 100 chips bet: ${values}.`;
+    // Shorter names for the coach panel and odds line
+    const SHORT_LABELS = { hit: 'Hit', stand: 'Stand', double: 'Double' };
 
+    // The numbers for each move ("Hit 22% · −50"), plus a short extra note
+    // only when the numbers alone could be misleading.
+    function coachOdds(odds, best) {
+      const actions = Object.keys(odds);
+      const rows = actions.map((a) => ({
+        text: `${SHORT_LABELS[a]} ${pct(odds[a].win)} · ${signed(per100(a, odds[a]))}`,
+        best: a === best,
+      }));
+
+      let extra = '';
       const exactBest = actions.reduce((a, b) => (valueOf(b, odds[b]) > valueOf(a, odds[a]) ? b : a));
       if (exactBest !== best) {
         // Only happens in a couple of borderline spots where the charts and
         // this simplified deck disagree by under 1 chip per 100.
-        text += ` It's a near tie: these odds slightly favor ${ACTION_LABELS[exactBest]}, but standard 6-deck charts say ${ACTION_LABELS[best]}.`;
+        extra = `Near tie: these odds favor ${SHORT_LABELS[exactBest]}, but 6-deck charts say ${SHORT_LABELS[best]}.`;
       } else if (best === 'double' && odds.double.win < odds.hit.win) {
-        text += ' Doubling wins a bit less often than hitting, but it pays twice as much, so it earns the most on average.';
-      } else if (valueOf(best, odds[best]) < 0) {
-        text += ` Every choice loses on average here; ${ACTION_LABELS[best]} loses the least.`;
+        extra = 'Double wins less often than Hit, but pays 2×.';
       } else {
-        text += ` ${ACTION_LABELS[best]} earns the most on average.`;
+        // When the numbers round to the same value, say it's close
+        const runnerUp = Math.max(...actions.filter((a) => a !== best).map((a) => valueOf(a, odds[a])));
+        if (valueOf(best, odds[best]) - runnerUp < 0.01) {
+          extra = `Close call: ${SHORT_LABELS[best]} is better by under 1 chip per 100.`;
+        }
       }
-      return text;
+      return { rows, extra };
     }
 
     // Grade the player's choice. Call this BEFORE the move changes the hand.
@@ -1127,13 +1195,44 @@
 
       const { total, soft } = handValue(state.player);
       // Only the up card counts: the coach judges what you could see.
-      const situation = `${soft ? 'soft' : 'hard'} ${total} vs the dealer's ${state.dealer[0].rank} up card`;
-      const reason = oddsReason(handOdds(state.player, state.dealer[0], doubleAllowed), best);
+      const situation = `${soft ? 'soft' : 'hard'} ${total} vs dealer's ${state.dealer[0].rank}`;
       const verdict = correct
-        ? `✓ ${ACTION_LABELS[action]} is the basic strategy play with ${situation}.`
-        : `✗ You chose ${ACTION_LABELS[action]}. Basic strategy says ${ACTION_LABELS[best]} with ${situation}.`;
-      const note = assisted ? ' (Assisted: the odds were showing, so this move isn’t scored.)' : '';
-      state.feedback.push({ correct, text: `${verdict} ${reason}${note}` });
+        ? `✓ ${SHORT_LABELS[action]}`
+        : `✗ ${SHORT_LABELS[action]} · ${SHORT_LABELS[best]} is better`;
+      const { rows, extra } = coachOdds(handOdds(state.player, state.dealer[0], doubleAllowed), best);
+      state.feedback.push({ correct, verdict, situation, rows, extra, assisted });
+    }
+
+    // One compact coach note: verdict line, then the numbers for each move.
+    function coachNoteElement(note) {
+      const li = document.createElement('li');
+      li.className = note.correct ? 'right' : 'wrong';
+
+      const top = document.createElement('div');
+      top.className = 'coach-verdict';
+      top.innerHTML = `<strong>${note.verdict}</strong><span class="coach-situation">${note.situation}</span>`;
+      if (note.assisted) {
+        top.insertAdjacentHTML('beforeend', '<span class="coach-tag" title="The odds were showing, so this move isn’t scored">assisted</span>');
+      }
+      li.appendChild(top);
+
+      const odds = document.createElement('div');
+      odds.className = 'coach-odds';
+      for (const row of note.rows) {
+        const span = document.createElement('span');
+        span.textContent = row.text;
+        if (row.best) span.className = 'best';
+        odds.appendChild(span);
+      }
+      li.appendChild(odds);
+
+      if (note.extra) {
+        const extra = document.createElement('div');
+        extra.className = 'coach-extra';
+        extra.textContent = note.extra;
+        li.appendChild(extra);
+      }
+      return li;
     }
 
     // ===================== Drawing the table =====================
@@ -1208,10 +1307,7 @@
       els.coach.hidden = !showCoach;
       els.coachList.innerHTML = '';
       for (const note of state.feedback) {
-        const li = document.createElement('li');
-        li.className = note.correct ? 'right' : 'wrong';
-        li.textContent = note.text;
-        els.coachList.appendChild(li);
+        els.coachList.appendChild(coachNoteElement(note));
       }
 
       // Buttons: only enable what makes sense right now
@@ -1243,8 +1339,8 @@
       }
       els.oddsLine.hidden = !odds;
       if (odds) {
-        const values = Object.keys(odds).map((a) => `${ACTION_LABELS[a]} ${signed(per100(a, odds[a]))}`);
-        els.oddsLine.textContent = `Win chance is on each button. Average result per 100 chips bet: ${values.join(' · ')}`;
+        const values = Object.keys(odds).map((a) => `${SHORT_LABELS[a]} ${signed(per100(a, odds[a]))}`);
+        els.oddsLine.textContent = `Avg per 100 chips: ${values.join(' · ')}`;
       }
     }
 
